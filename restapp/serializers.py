@@ -37,4 +37,22 @@ class UserSerializerWithToken(UserSerializer):
     def get_token(self,obj):
         token=RefreshToken.for_user(obj)
         return str(token.access_token)
-    
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True, max_length=255)
+    password = serializers.CharField(required=True, max_length=128, write_only=True)
+
+    def validate(self, data):
+        """
+        Add any extra validation you want to do here.
+        """
+        if not data.get("username") or not data.get("password"):
+            raise serializers.ValidationError("Username and password are required.")
+        return data
+
+
+
+class FileUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FileUpload
+        fields = ['id', 'title', 'file', 'uploaded_at']

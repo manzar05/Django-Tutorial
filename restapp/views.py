@@ -1,6 +1,6 @@
 from .models import *
 from .serializers import *
-from django.http import HttpResponse
+from django.http import HttpResponse, Http404
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view,permission_classes
@@ -39,6 +39,31 @@ class MyTokenObtainPairView(TokenObtainPairView):
 def home(request):
     data = {
         "message":"Successs"
+    }
+    return Response(data,status=status.HTTP_200_OK)
+
+from django.contrib.auth import authenticate
+@api_view(['POST'])
+def loginUser(request):
+    data = request.data
+    if not data['username']:
+        raise "Email Required"
+    elif not data['password']:
+        raise "Password Required"
+    
+    # Validate incoming data with serializer
+    serializer = LoginSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    username = serializer.validated_data['username']
+    password = serializer.validated_data['password']
+    
+    # Authenticate user
+    user = authenticate(username=username, password=password)
+    if user is not None:
+        serialize = UserSerializerWithToken(user, many=False).data
+        return Response(serialize,status=status.HTTP_200_OK)
+    data = {
+        "message":"Login Failed"
     }
     return Response(data,status=status.HTTP_200_OK)
 
@@ -164,5 +189,66 @@ def activateAccount(request, uidb64, token):
         return Response({'details': 'Invalid token!'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'details': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
-        
+    
+#-----------------------------------------------------------------------------
+#               File Access API
+#-----------------------------------------------------------------------------
+import os
+from rest_framework.views import APIView
+
+
+class FileUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request, *args, **kwargs):
+        """
+        Handle file upload from authenticated users.
+
+        Args:
+            request: The HTTP request object containing the file data.
+
+        Returns:
+            Response: A Response object containing the serializer data or error messages.
+        """
+        serializer = FileUploadSerializer(data=request.data)
+
+        # Check if the received data is valid
+        if serializer.is_valid():
+            file_upload = serializer.save()  # Save file and other data to the model
+            FilePermission.objects.create(user=request.user, file=file_upload)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # If not valid, return error details
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def protected_media(request, path):
+    """
+    Serve files from the media directory for authenticated users only.
+    
+    Args:
+        request: The HTTP request object.
+        path: The relative path to the file within the media directory.
+
+    Returns:
+        HTTP response containing the requested file or an error message.
+    """
+    media_root = os.path.join(settings.MEDIA_ROOT)  # Use Django's media root setting
+    file_path = os.path.join(media_root, path)
+    # Check if the file exists and the user has permission
+    if os.path.exists(file_path):
+        try:    
+            file_upload = FileUpload.objects.get(file=path)
+            if FilePermission.objects.filter(user=request.user, file=file_upload).exists():
+                with open(file_path, 'rb') as file:
+                    response = HttpResponse(file.read(), content_type="application/pdf")
+                    response['Content-Disposition'] = f'inline; filename={os.path.basename(file_path)}'
+                    return response
+            return Response({"message":"File not Found"},status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print("Exception---",e)
+            return Response({"message":"You don't have permission to accesss file"},status=status.HTTP_401_UNAUTHORIZED)
+    else:
+        return Response({"message":"File not Found"},status=status.HTTP_404_NOT_FOUND)
+
