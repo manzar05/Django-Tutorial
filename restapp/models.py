@@ -55,7 +55,5 @@ class FileUpload(models.Model):
 class FilePermission(models.Model):
     user = models.ForeignKey(MyUserTable, on_delete=models.CASCADE,db_column="user",related_name="user_file_permission",null=True)
     file = models.ForeignKey(FileUpload, on_delete=models.CASCADE,db_column="file",related_name="file_permission",null=True)
-    file_upload = models.TextField(null=True)
-
     def __str__(self):
         return f"{self.user.username} has access to {self.file_upload}"
